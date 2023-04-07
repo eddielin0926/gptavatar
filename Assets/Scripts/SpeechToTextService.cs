@@ -2,23 +2,15 @@ using UnityEngine;
 using UnityEngine.UI;
 using Microsoft.CognitiveServices.Speech;
 using TMPro;
-#if PLATFORM_ANDROID
-using UnityEngine.Android;
-#endif
-#if PLATFORM_IOS
-using UnityEngine.iOS;
-using System.Collections;
-#endif
 
-public class GptService : MonoBehaviour
+public class SpeechToTextService : MonoBehaviour
 {
     public GameObject Avatar;
 
-    public string SubscriptionKey;
-    public string ServiceRegion;
+    public SpeechServiceSubcription Subscription;
 
     // Hook up the two properties below with a Text and Button object in your UI.
-    public Text OutputText;
+    public TextMeshProUGUI OutputText;
     public Button startRecoButton;
 
     private Animator animator;
@@ -28,12 +20,6 @@ public class GptService : MonoBehaviour
     private string message;
 
     private bool micPermissionGranted = false;
-
-#if PLATFORM_ANDROID || PLATFORM_IOS
-    // Required to manifest microphone permission, cf.
-    // https://docs.unity3d.com/Manual/android-manifest.html
-    private Microphone mic;
-#endif
 
     void Start()
     {
@@ -49,23 +35,9 @@ public class GptService : MonoBehaviour
         else
         {
             // Continue with normal initialization, Text and Button objects are present.
-#if PLATFORM_ANDROID
-            // Request to use the microphone, cf.
-            // https://docs.unity3d.com/Manual/android-RequestingPermissions.html
-            message = "Waiting for mic permission";
-            if (!Permission.HasUserAuthorizedPermission(Permission.Microphone))
-            {
-                Permission.RequestUserPermission(Permission.Microphone);
-            }
-#elif PLATFORM_IOS
-            if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
-            {
-                Application.RequestUserAuthorization(UserAuthorization.Microphone);
-            }
-#else
             micPermissionGranted = true;
             message = "Click button to recognize speech";
-#endif
+
             animator = Avatar.GetComponent<Animator>();
             startRecoButton.onClick.AddListener(StartRegonize);
         }
@@ -74,20 +46,6 @@ public class GptService : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-#if PLATFORM_ANDROID
-        if (!micPermissionGranted && Permission.HasUserAuthorizedPermission(Permission.Microphone))
-        {
-            micPermissionGranted = true;
-            message = "Click button to recognize speech";
-        }
-#elif PLATFORM_IOS
-        if (!micPermissionGranted && Application.HasUserAuthorization(UserAuthorization.Microphone))
-        {
-            micPermissionGranted = true;
-            message = "Click button to recognize speech";
-        }
-#endif
-
         lock (threadLocker)
         {
             if (startRecoButton != null)
@@ -105,7 +63,7 @@ public class GptService : MonoBehaviour
     {
         // Creates an instance of a speech config with specified subscription key and service region.
         // Replace with your own subscription key and service region (e.g., "westus").
-        var config = SpeechConfig.FromSubscription(SubscriptionKey, ServiceRegion);
+        var config = SpeechConfig.FromSubscription(Subscription.Key, Subscription.Region);
 
         // Make sure to dispose the recognizer after use!
         using (var recognizer = new SpeechRecognizer(config))
@@ -144,6 +102,7 @@ public class GptService : MonoBehaviour
             {
                 message = newMessage;
                 waitingForReco = false;
+                // animator.SetTrigger("TrListen");
             }
         }
     }
