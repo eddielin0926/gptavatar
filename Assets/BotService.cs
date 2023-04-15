@@ -108,6 +108,7 @@ public class BotService : MonoBehaviour
             lock (threadLocker)
             {
                 waitingForReco = true;
+                animator.SetTrigger("TrListen");
             }
 
             // Starts speech recognition, and returns after a single utterance is recognized. The end of a
@@ -160,6 +161,7 @@ public class BotService : MonoBehaviour
         {
             waitingForBot = false;
             waitingForSpeak = true;
+            animator.SetTrigger("TrTalk");
         }
 
         // Starts speech synthesis, and returns once the synthesis is started.
