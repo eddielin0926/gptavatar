@@ -1,10 +1,13 @@
 using System;
 using System.Threading;
+using System.Collections;
+using UnityEngine.Networking;
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
 using Microsoft.CognitiveServices.Speech;
 using System.Threading.Tasks;
+using SimpleJSON;
 
 public class BotService : MonoBehaviour
 {
@@ -28,6 +31,7 @@ public class BotService : MonoBehaviour
 
     private SpeechConfig speechConfig;
     private SpeechSynthesizer synthesizer;
+    private string detectedLanguage;
 
     private void Start()
     {
@@ -47,21 +51,16 @@ public class BotService : MonoBehaviour
 
             // Creates an instance of a speech config with specified subscription key and service region.
             speechConfig = SpeechConfig.FromSubscription(SubscriptionKey, SubscriptionRegion);
+            // set the desired language
+            
+            //speechConfig.SpeechSynthesisLanguage = "zh-TW";
+            //Debug.Log("speech language:"+speechConfig.SpeechSynthesisLanguage);
+            //speechConfig.SpeechSynthesisVoiceName = "zh-TW-HsiaoChenNeural"; // Set the desired voice , ex : zh-TW-YunJheNeural (Male)
 
             // The default format is RIFF, which has a riff header.
             // We are playing the audio in memory as audio clip, which doesn't require riff header.
             // So we need to set the format to raw (24KHz for better quality).
             speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm);
-
-            // Creates a speech synthesizer.
-            // Make sure to dispose the synthesizer after use!
-            synthesizer = new SpeechSynthesizer(speechConfig, null);
-
-            synthesizer.SynthesisCanceled += (s, e) =>
-            {
-                var cancellation = SpeechSynthesisCancellationDetails.FromResult(e.Result);
-                message = $"CANCELED:\nReason=[{cancellation.Reason}]\nErrorDetails=[{cancellation.ErrorDetails}]\nDid you update the subscription info?";
-            };
 
             DirectLine.DirectLineConnection.instance.OnReceivedMessage += TextToSpeech;
 
@@ -96,14 +95,19 @@ public class BotService : MonoBehaviour
 
     public async Task<string> SpeechToText()
     {
+        // Recognize once with At-start LID,set autodetect configuration for different languages
+        var autoDetectSourceLanguageConfig =AutoDetectSourceLanguageConfig.FromLanguages(new string[] { "en-US", "ja-JP" ,"zh-TW" });
+        
         // Creates an instance of a speech config with specified subscription key and service region.
         // Replace with your own subscription key and service region (e.g., "westus").
         var config = SpeechConfig.FromSubscription(SubscriptionKey, SubscriptionRegion);
+        config.SpeechRecognitionLanguage = "zh-TW"; // Set the desired language, for example, Traditional Chinese (defaut:en_US)
+  
         // Checks result.
         string newMessage = string.Empty;
 
         // Make sure to dispose the recognizer after use!
-        using (var recognizer = new SpeechRecognizer(config))
+        using (var recognizer = new SpeechRecognizer(config,autoDetectSourceLanguageConfig))
         {
             lock (threadLocker)
             {
@@ -119,6 +123,13 @@ public class BotService : MonoBehaviour
             // For long-running multi-utterance recognition, use StartContinuousRecognitionAsync() instead.
             var result = await recognizer.RecognizeOnceAsync().ConfigureAwait(false);
 
+            // Check the language code we get from speech NID , later use for tts speaker
+
+            //var speechRecognitionResult = await recognizer.RecognizeOnceAsync();
+            var autoDetectSourceLanguageResult = AutoDetectSourceLanguageResult.FromResult(result);
+            detectedLanguage = autoDetectSourceLanguageResult.Language;
+            
+            Debug.Log("Language Detected :" + detectedLanguage);
             
             if (result.Reason == ResultReason.RecognizedSpeech)
             {
@@ -151,9 +162,43 @@ public class BotService : MonoBehaviour
         // OnReceivedMessage => TextToSpeech;
     }
 
+
+    private IEnumerator DetectLanguage(string inputText) 
+    {
+        string url = "https://a9language.cognitiveservices.azure.com" + "/text/analytics/v3.0/languages";
+        string jsonInput = "{\"documents\": [{\"id\": \"1\", \"text\": \"" + inputText + "\"}]}";
+        UnityWebRequest request = new UnityWebRequest(url, "POST");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonInput);
+        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+        request.SetRequestHeader("Ocp-Apim-Subscription-Key", "bd61ab933bb84b63bd9cb897e224d0a0");
+
+        yield return request.SendWebRequest();
+        if (request.result != UnityWebRequest.Result.Success) {
+            Debug.Log(request.error);
+        } else {
+            Debug.Log(request.downloadHandler.text); // Parse the JSON response and extract the detected language and confidence score.
+            //DocumentSet jsonResponse = JsonUtility.FromJson<DocumentSet>(request.downloadHandler.text);
+            //Debug.Log("Detext Text Language :"+jsonResponse.documents[0].id);
+            //Debug.Log("Detext Text Language :"+jsonResponse.documents[0].languageUsed.);
+            JSONNode jsonResponse = JSON.Parse(request.downloadHandler.text);
+            detectedLanguage = jsonResponse["documents"][0]["detectedLanguage"]["iso6391Name"];
+            if(detectedLanguage=="en")
+            detectedLanguage="en_US";
+            else if(detectedLanguage == "ja")
+            detectedLanguage = "ja_JP";
+            else
+            detectedLanguage = "zh_TW";
+            Debug.Log($"Detected language: {detectedLanguage}");
+            speechConfig.SpeechSynthesisLanguage = detectedLanguage;
+        }
+
+    }    
+
     public void TextToSpeech(string message)
     {
-        if (message == "Welcome to Azure GPT Bot!" || message == "Reset dialog history and Restart")
+        if (message == "Welcome to Azure GPT Bot!" || message.Contains("Reach Token limit") )
         {
             return;
         }
@@ -163,7 +208,24 @@ public class BotService : MonoBehaviour
             waitingForSpeak = true;
             animator.SetTrigger("TrTalk");
         }
+        speechConfig.SpeechSynthesisLanguage = detectedLanguage;
+        Debug.Log("speech language:"+detectedLanguage);
+        // Creates a speech synthesizer.
+        // Make sure to dispose the synthesizer after use!
+        StartCoroutine(DetectLanguage(message));
+        Debug.Log("speech language:"+detectedLanguage);
+        
 
+        
+        
+        synthesizer = new SpeechSynthesizer(speechConfig, null);
+
+        synthesizer.SynthesisCanceled += (s, e) =>
+        {
+            var cancellation = SpeechSynthesisCancellationDetails.FromResult(e.Result);
+            message = $"CANCELED:\nReason=[{cancellation.Reason}]\nErrorDetails=[{cancellation.ErrorDetails}]\nDid you update the subscription info?";
+        };
+        
         // Starts speech synthesis, and returns once the synthesis is started.
         using (var result = synthesizer.StartSpeakingTextAsync(message).Result)
         {
@@ -203,6 +265,7 @@ public class BotService : MonoBehaviour
         {
             waitingForSpeak = false;
         }
+        
     }
 
     void OnDestroy()

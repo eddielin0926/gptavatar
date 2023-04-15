@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.RegularExpressions;
 using System.Collections;
 using System.Net.WebSockets;
 using System.Text;
@@ -52,6 +53,7 @@ namespace DirectLine
         // This method gets called when an activity is received through the web socket (also WebGL → see .jslib)
         public void OnMessageReceived(string data)
         {
+            //Debug.Log("GPT Response -"+data);
             ActivitySet activitySet = JsonUtility.FromJson<ActivitySet>(data);
 
             if (activitySet == null)
@@ -68,9 +70,9 @@ namespace DirectLine
                     // Bots response activity
                     if (activitySet.activities[i].type == "message")
                     {
-                        Debug.Log("Bot response: " + activitySet.activities[i].text);
+                        Debug.Log("Bot response: " + Regex.Replace(activitySet.activities[i].text, @"\p{Cs}", ""));
                         if (OnReceivedMessage != null)
-                            OnReceivedMessage.Invoke(activitySet.activities[i].text);
+                            OnReceivedMessage.Invoke(Regex.Replace(activitySet.activities[i].text, @"\p{Cs}", ""));
                     }
                 }
             }
@@ -114,17 +116,20 @@ namespace DirectLine
             await webSocket.ConnectAsync(uri, CancellationToken.None);
 
             Debug.Log("WebSocket state: " + webSocket.State);
-
-            ArraySegment<byte> buffer = WebSocket.CreateClientBuffer(1024, 1024);
+            
+            ArraySegment<byte> buffer = WebSocket.CreateClientBuffer(2048, 1024);
             WebSocketReceiveResult result = await webSocket.ReceiveAsync(buffer, CancellationToken.None);
 
 
             while (!webSocket.CloseStatus.HasValue)
             {
                 string message = Encoding.UTF8.GetString(buffer.Array, 0, result.Count);
-
+                //Debug.Log("Buffer Received ... "+buffer.Array);
+                //Debug.Log("Reulst ... "+result.Count);
+                //Debug.Log("Reulst ... "+result);
                 if (result != null && result.EndOfMessage)
                 {
+                    Debug.Log("Message Received ... "+message);
                     OnMessageReceived(message);
                 }
 
@@ -166,6 +171,7 @@ namespace DirectLine
             else
             {
                 string responseAsString = webRequest.downloadHandler.text;
+            
                 Debug.Log("Posted activity of type: " + type + " " + responseAsString);
             }
         }
