@@ -173,6 +173,8 @@ public class BotService : MonoBehaviour
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json");
         request.SetRequestHeader("Ocp-Apim-Subscription-Key", "bd61ab933bb84b63bd9cb897e224d0a0");
+        request.disposeUploadHandlerOnDispose = true;
+        request.disposeDownloadHandlerOnDispose = true;
 
         yield return request.SendWebRequest();
         if (request.result != UnityWebRequest.Result.Success) {
@@ -193,7 +195,7 @@ public class BotService : MonoBehaviour
             Debug.Log($"Detected language: {detectedLanguage}");
             speechConfig.SpeechSynthesisLanguage = detectedLanguage;
         }
-
+        request.Dispose();
     }    
 
     public void TextToSpeech(string message)

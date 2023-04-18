@@ -153,6 +153,8 @@ namespace DirectLine
             webRequest.method = "POST";
 
             webRequest.downloadHandler = new DownloadHandlerBuffer();
+            webRequest.disposeUploadHandlerOnDispose = true;
+            webRequest.disposeDownloadHandlerOnDispose = true;
 
             Activity activitiy = new Activity();
             activitiy.from = new ChannelAccount(fromUser);
@@ -174,6 +176,7 @@ namespace DirectLine
             
                 Debug.Log("Posted activity of type: " + type + " " + responseAsString);
             }
+            webRequest.Dispose();
         }
     }
 }
